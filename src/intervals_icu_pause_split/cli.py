@@ -193,8 +193,27 @@ def find_pauses(s: Streams, stop_speed: float, min_pause: float, merge: float) -
     return [(a, b) for a, b, stopped in merged if stopped >= min_pause]
 
 
+@dataclass(frozen=True)
+class Edge:
+    """How much riding --edges splits off: seconds, or metres when by_distance."""
+
+    amount: float
+    by_distance: bool = False
+
+    def __str__(self) -> str:
+        return f"{self.amount / 1000:g} km" if self.by_distance else fmt_duration(self.amount)
+
+    def position(self, s: Streams, i: int) -> float:
+        """Where sample i lies on this edge's scale: elapsed time or distance."""
+        return s.distance_at(i) if self.by_distance else s.t(i)
+
+
 def build_segments(
-    s: Streams, pauses: list[tuple[int, int]], ride_label: str, warmup: float = 0, cooldown: float = 0
+    s: Streams,
+    pauses: list[tuple[int, int]],
+    ride_label: str,
+    warmup: Edge | None = None,
+    cooldown: Edge | None = None,
 ) -> list[Segment]:
     segments: list[Segment] = []
     pos = 0
@@ -212,8 +231,13 @@ def build_segments(
     return segments
 
 
-def split_edges(s: Streams, segments: list[Segment], warmup: float, cooldown: float) -> list[Segment]:
-    """Cut the first `warmup` and last `cooldown` seconds of riding into intervals of their own.
+def first_reaching(s: Streams, edge: Edge, target: float, lo: int, hi: int) -> int:
+    """First sample in [lo, hi) whose time or distance is at least target; hi if there is none."""
+    return bisect.bisect_left(range(hi), target, lo, hi, key=lambda i: edge.position(s, i))
+
+
+def split_edges(s: Streams, segments: list[Segment], warmup: Edge | None, cooldown: Edge | None) -> list[Segment]:
+    """Cut the first `warmup` and last `cooldown` of riding into intervals of their own.
 
     Meant for riding out of and back into town, so the stop-and-go doesn't
     dilute the first and last block. A ride too short to split becomes the
@@ -225,9 +249,9 @@ def split_edges(s: Streams, segments: list[Segment], warmup: float, cooldown: fl
     out = list(segments)
 
     # The cooldown goes first: splitting the last ride never shifts the index of the first.
-    if cooldown:
+    if cooldown and cooldown.amount:
         seg = out[rides[-1]]
-        cut = bisect.bisect_left(s.time, s.t(seg.end) - cooldown, seg.start, seg.end)
+        cut = first_reaching(s, cooldown, cooldown.position(s, seg.end) - cooldown.amount, seg.start, seg.end)
         if cut <= seg.start:
             seg.label = COOLDOWN_LABEL
         else:
@@ -237,8 +261,8 @@ def split_edges(s: Streams, segments: list[Segment], warmup: float, cooldown: fl
             ]
 
     seg = out[rides[0]]
-    if warmup and not seg.label:
-        cut = bisect.bisect_left(s.time, s.time[seg.start] + warmup, seg.start, seg.end)
+    if warmup and warmup.amount and not seg.label:
+        cut = first_reaching(s, warmup, warmup.position(s, seg.start) + warmup.amount, seg.start, seg.end)
         if cut >= seg.end:
             seg.label = WARMUP_LABEL
         else:
@@ -452,6 +476,17 @@ def parse_duration(text: str) -> float:
     return float(m[1]) * {"s": 1, "m": 60, "min": 60, "h": 3600}[m[2] or "m"]
 
 
+def parse_edge(text: str) -> Edge:
+    """'3km' is a distance, anything else a duration. Metres are left out: '5m' already means minutes."""
+    m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*km\s*", text)
+    if m:
+        return Edge(float(m[1]) * 1000, by_distance=True)
+    try:
+        return Edge(parse_duration(text))
+    except argparse.ArgumentTypeError:
+        raise argparse.ArgumentTypeError(f"invalid edge {text!r}, use a duration (10m) or a distance (3km)") from None
+
+
 def parse_activity_id(text: str) -> str:
     """Accept the bare id or the activity's intervals.icu URL."""
     m = re.search(r"/activities/([^/?#]+)", text)
@@ -475,9 +510,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Below this speed you count as standing still, in km/h (default: 3)",
     )
     p.add_argument(
-        "--edges", type=parse_duration, nargs="+", metavar="DURATION",
-        help="Split the first and last DURATION of riding into Warmup and Cooldown intervals, e.g. for riding "
-        "out of and back into town. Two values set them separately: --edges 10m 15m",
+        "--edges", type=parse_edge, nargs="+", metavar="LENGTH",
+        help="Split the first and last LENGTH of riding into Warmup and Cooldown intervals, e.g. for riding "
+        "out of and back into town. A duration (10m) or a distance (3km); two values set them separately: "
+        "--edges 3km 10m",
     )
     p.add_argument("--label", default="Ride", help="Label prefix for the riding intervals (default: Ride)")
     p.add_argument("--width", type=int, help="Width of the timeline (default: terminal width)")
@@ -504,8 +540,8 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     if args.edges and len(args.edges) > 2:
-        parser.error("--edges takes one duration for both ends, or two for start and end")
-    warmup, cooldown = (args.edges[0], args.edges[-1]) if args.edges else (0, 0)
+        parser.error("--edges takes one length for both ends, or two for start and end")
+    warmup, cooldown = (args.edges[0], args.edges[-1]) if args.edges else (None, None)
     if args.width:
         console.width = args.width
     api = Api(resolve_api_key(args))
@@ -517,6 +553,9 @@ def main() -> None:
     current_segments = segments_from_intervals(current.get("icu_intervals") or [])
     stop_speed = args.stop_speed / 3.6
 
+    if any(x.by_distance for x in args.edges or []) and not streams.distance:
+        fail(f"Activity {activity_id} has no distance stream, so give --edges as a duration (10m), not in km.")
+
     if args.restore:
         new_segments = load_backup(args.restore, activity_id)
         rule = f"Restoring the intervals from {escape(str(args.restore))}"
@@ -527,8 +566,8 @@ def main() -> None:
             f"Pause: at least {fmt_duration(args.min_pause)} below {args.stop_speed:g} km/h or not recording; "
             f"stops less than {fmt_duration(args.merge)} apart are merged"
         )
-        if warmup or cooldown:
-            rule += f"\n  Warmup: first {fmt_duration(warmup)} of riding · Cooldown: last {fmt_duration(cooldown)}"
+        if args.edges:
+            rule += f"\n  Warmup: first {warmup} of riding · Cooldown: last {cooldown}"
 
     start_dt = datetime.fromisoformat(activity["start_date_local"])
     elapsed = streams.t(len(streams)) - streams.time[0]

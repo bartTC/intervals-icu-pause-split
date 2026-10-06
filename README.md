@@ -80,7 +80,9 @@ so a ten-minute stop stays visible even on a two-day timeline.
 
 Riding out of town and back in can be split off as well: `--edges 10m` turns
 the first and last ten minutes of riding into `Warmup` and `Cooldown`
-intervals, `--edges 10m 15m` sets them separately.
+intervals. Give a distance instead with `--edges 3km`, or two values to set
+start and end separately: `--edges 3km 10m`. A distance ignores the time spent
+at traffic lights, so it tends to match "until I'm out of town" better.
 
 ## What gets written
 
@@ -104,11 +106,14 @@ uvx intervals-icu-pause-split i181405932                   # preview, then ask b
 uvx intervals-icu-pause-split i181405932 --dry-run         # preview, never write
 uvx intervals-icu-pause-split i181405932 --min-pause 10m   # only the longer stops
 uvx intervals-icu-pause-split i181405932 --edges 10m       # warmup and cooldown of 10 minutes
+uvx intervals-icu-pause-split i181405932 --edges 3km 10m   # 3 km warmup, 10 minute cooldown
 uvx intervals-icu-pause-split i181405932 --label Fahrt     # "Fahrt 1", "Fahrt 2", …
 uvx intervals-icu-pause-split i181405932 --yes             # write without asking
 ```
 
 Durations are written as `90s`, `5m` or `1.5h`; a bare number means minutes.
+Distances for `--edges` are written in `km` (`0.5km`, not `500m`, because `m`
+already means minutes).
 Nothing is written without a confirmation prompt unless you pass `--yes`.
 
 ### Credentials
@@ -128,7 +133,7 @@ INTERVALS_ICU_API_KEY=your_key_here
 | `--min-pause` | `5m` | Minimum standstill for a pause |
 | `--merge` | `60s` | Stops with less riding than this in between count as one pause |
 | `--stop-speed` | `3` | Below this speed (km/h) you count as standing still |
-| `--edges` | | Split off the first and last stretch of riding as `Warmup` and `Cooldown`; one duration for both or two for start and end |
+| `--edges` | | Split off the first and last stretch of riding as `Warmup` and `Cooldown`, as a duration (`10m`) or a distance (`3km`); one value for both ends or two for start and end |
 | `--label` | `Ride` | Label prefix for the riding intervals |
 | `--width` | terminal width | Width of the timeline |
 | `--restore` | | Put back the intervals from a backup file |

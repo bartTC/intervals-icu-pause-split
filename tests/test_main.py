@@ -129,10 +129,49 @@ def test_edges_write_warmup_and_cooldown(run, capsys):
     assert "Warmup: first 2 min of riding · Cooldown: last 3 min" in out
 
 
-def test_edges_take_at_most_two_durations(run, capsys):
+def test_edges_in_km(run, capsys):
+    api = FakeApi()
+    out = run(api, "i1", "--yes", "--edges", "1km", capsys=capsys)
+    # 8 m/s: the first kilometre ends at sample 125, the last one starts at 1474.
+    assert [(x["start_index"], x["end_index"], x["label"]) for x in api.puts[0][1]] == [
+        (0, 125, "Warmup"),
+        (125, 600, "Ride 1"),
+        (1000, 1474, "Ride 2"),
+        (1474, 1600, "Cooldown"),
+    ]
+    assert "Warmup: first 1 km of riding · Cooldown: last 1 km" in out
+
+
+def test_edges_in_km_need_a_distance_stream(run, capsys, monkeypatch):
+    monkeypatch.setattr(STREAMS, "distance", None)
+    with pytest.raises(SystemExit):
+        run(FakeApi(), "i1", "--edges", "1km", capsys=capsys)
+    assert "no distance stream" in capsys.readouterr().out
+
+
+def test_edges_take_at_most_two_lengths(run, capsys):
     with pytest.raises(SystemExit):
         run(FakeApi(), "i1", "--edges", "1m", "2m", "3m", capsys=capsys)
-    assert "--edges takes one duration" in capsys.readouterr().err
+    assert "--edges takes one length" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("text", "edge"),
+    [
+        ("3km", cli.Edge(3000, by_distance=True)),
+        ("2.5 km", cli.Edge(2500, by_distance=True)),
+        ("10m", cli.Edge(600)),
+        ("10", cli.Edge(600)),
+        ("90s", cli.Edge(90)),
+    ],
+)
+def test_parse_edge(text, edge):
+    assert cli.parse_edge(text) == edge
+
+
+def test_parse_edge_rejects_other_units():
+    with pytest.raises(argparse.ArgumentTypeError, match="duration .* or a distance"):
+        cli.parse_edge("3mi")
 
 
 def test_restore_puts_back_the_rides_from_a_backup(run, capsys, tmp_path):
