@@ -1,0 +1,56 @@
+[project]
+name = "intervals-icu-pause-split"
+version = "0.1.0"
+description = "Split intervals.icu activities into riding and pause intervals, with a preview before anything is written"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Martin Mahner" }]
+keywords = ["intervals.icu", "cycling", "intervals", "laps", "pause", "bikepacking"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "httpx>=0.27",
+    "rich>=13.7",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+intervals-icu-pause-split = "intervals_icu_pause_split.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/bartTC/intervals-icu-pause-split"
+Issues = "https://github.com/bartTC/intervals-icu-pause-split/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/intervals_icu_pause_split"]
+
+[tool.hatch.build]
+exclude = [".env", ".env.*", "dist/", ".claude/", "docs/"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=intervals_icu_pause_split --cov-report=term-missing --cov-branch"
+
+[tool.coverage.report]
+fail_under = 90
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]

@@ -1,0 +1,17 @@
+# Zugangsdaten
+.env
+
+# Build-Artefakte
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
