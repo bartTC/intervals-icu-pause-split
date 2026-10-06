@@ -172,7 +172,7 @@ def test_label_and_thresholds_are_passed_through(run, capsys):
 
 def test_edges_write_warmup_and_cooldown(run, capsys):
     api = FakeApi()
-    out = run(api, "i1", "--yes", "--edges", "2m", "3m", capsys=capsys)
+    out = run(api, "i1", "--yes", "--edges", "2m,3m", capsys=capsys)
     assert [(x["start_index"], x["end_index"], x["label"]) for x in api.puts[0][1]] == [
         (0, 120, "Warmup"),
         (120, 600, "Leg 1"),
@@ -204,8 +204,14 @@ def test_edges_in_km_need_a_distance_stream(run, capsys, monkeypatch):
 
 def test_edges_take_at_most_two_lengths(run, capsys):
     with pytest.raises(SystemExit):
-        run(FakeApi(), "i1", "--edges", "1m", "2m", "3m", capsys=capsys)
-    assert "--edges takes one length" in capsys.readouterr().err
+        run(FakeApi(), "i1", "--edges", "1m,2m,3m", capsys=capsys)
+    assert "give one length for both ends or two" in capsys.readouterr().err
+
+
+def test_edges_before_the_activity_url_leave_the_url_alone(run, capsys):
+    api = FakeApi()
+    run(api, "--yes", "--edges", "1km", "https://intervals.icu/activities/i1", capsys=capsys)
+    assert api.puts[0][0] == "/activity/i1/intervals"
 
 
 @pytest.mark.parametrize(

@@ -124,6 +124,25 @@ def test_table_shows_ride_stats_and_blanks_for_pauses():
     assert "—" in pause_row
 
 
+def test_short_table_keeps_the_first_and_last_few():
+    s = make_streams(("ride", 2000))
+    segments = [Segment("WORK", i * 100, (i + 1) * 100, f"Leg {i + 1}") for i in range(20)]
+    out = text_of(cli.render_table(s, segments, SATURDAY_MORNING, STOP_SPEED, "Now", short=True))
+    assert "20 intervals, 11 not shown" in out
+    shown = [f"Leg {i}" for i in (1, 6, 18, 20)]
+    assert all(x in out for x in shown)
+    assert "Leg 7 " not in out and "Leg 17" not in out
+    assert "…" in out
+
+
+def test_short_table_shows_everything_when_it_would_hide_one_row():
+    s = make_streams(("ride", 1000))
+    segments = [Segment("WORK", i * 100, (i + 1) * 100, f"Leg {i + 1}") for i in range(10)]
+    out = text_of(cli.render_table(s, segments, SATURDAY_MORNING, STOP_SPEED, "Now", short=True))
+    assert "Leg 7" in out
+    assert "not shown" not in out
+
+
 def test_table_shows_the_weekday_only_for_multi_day_activities():
     s = make_streams(("ride", 600))
     segments = [Segment("WORK", 0, 600, "Leg 1")]

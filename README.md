@@ -6,7 +6,7 @@ longer drags down the averages of the leg it sits in. Works for rides, hikes,
 walks and runs alike.
 
 ```
-uvx intervals-icu-pause-split https://intervals.icu/activities/i181405932 --api-key=YOUR_KEY
+uvx intervals-icu-pause-split https://intervals.icu/activities/i87942121 --api-key=YOUR_KEY
 ```
 
 That is the whole install. `uvx` fetches it, runs it, and throws it away again.
@@ -14,61 +14,62 @@ Pass the activity id or just paste its URL.
 
 ## What it looks like
 
-A two-day bikepacking trip, recorded as one activity with auto-pause on:
+A gravel ride on Rügen. intervals.icu had detected 97 intervals on its own:
+power surges of a few seconds, with "recovery" in between, which says nothing
+about how the ride actually went.
 
 ```
-╭────────────────── intervals.icu · i181405932 ───────────────────╮
-│ Wochenendausflug                                                │
-│ GravelRide · Sat 06:30, 2026-08-29 · 352.0 km · 35:04 h elapsed │
-╰─────────────────────────────────────────────────────────────────╯
+❯ uvx intervals-icu-pause-split --edges 5km https://intervals.icu/activities/i87942121
+
+╭────────────────── intervals.icu · i87942121 ──────────────────╮
+│ Sassnitz Gravel/Offroad-Radfahren                             │
+│ GravelRide · Sat 10:58, 2025-05-17 · 96.9 km · 5:33 h elapsed │
+╰───────────────────────────────────────────────────────────────╯
   Pause: at least 5 min below 3 km/h or not recording; stops less than 1 min apart are merged
-  Warmup: first 10 min · Cooldown: last 10 min
+  Warmup: first 5 km · Cooldown: last 5 km
 
-Speed     │▇▇▇▇▇▇▇▇▇▆▆▆▆▆▆▆▃▅▆▆▆▇▇▆▅▆                                      ▆█▇▆▇▇▇▆▆▆▆▇██▇█▇▇▆▆██▇▇│
-Now       │████████████████████████████████████████████████████████████████████████████████████████│
-New       │█████████╎█████╎███░██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░███████╎███╎███████░████│
-          └──────┴──────┴───────┴──────┴───────┴──────┴───────┴──────┴───────┴───────┴──────┴──────┘
-                 09:00  12:00   15:00  18:00   21:00  Sun     03:00  06:00   09:00   12:00  15:00
-           ██ moving   ░ pause   ╎ shorter pause   ▁…█ speed up to 24 km/h   · one column ≈ 23 min
+Speed     │▄▅▆▇▇▇▇▆▅▃▄▄▅▆▆▄█▇███▅▇▇▁ ▅▇▆▇▇▇▇▇▇▆▇▆▇▆▆▆▄▆▄  ▄▇▇▆▇█▇▆▇▇▇█▇▇█▇▆▇▇▆▅▄▅▆▆▅█▅▅▅▅▇▇▆▅▆██▇██│
+Now       │╎░╎╎╎╎█╎█╎╎█░░█████░░█░░░░░░░░░░░░░░░░░░░░░█░░░░░█╎░░░░░░█░░░█░░░░░░╎░█░╎█░░░░░╎█╎░╎╎╎█░│
+New       │████████████████████████░░░█████████████████░░░█████████████████████████████████████████│
+          └┴───────────────┴──────────────┴───────────────┴───────────────┴───────────────┴────────┘
+           11:00           12:00          13:00           14:00           15:00           16:00
+           ██ moving   ░ pause   ╎ shorter pause   ▁…█ speed up to 27 km/h   · one column ≈ 3 min
 
-Now
-#  Type  Label      Start  Duration  Distance  km/h    W
-1  WORK  —      Sat 06:30   25:50 h  178.2 km  18.2  113
-2  WORK  —      Sun 08:21     3 min    1.7 km  27.7   45
-3  WORK  —      Sun 08:24    8:30 h  159.1 km  20.6  105
-4  WORK  —      Sun 16:54    39 min   13.1 km  19.9  123
+Now  97 intervals, 88 not shown
+ #  Type      Label  Start  Duration  Distance  km/h    W
+ 1  RECOVERY  —      10:58     1 min    0.4 km     —    —
+ 2  WORK      —      11:00     3 min    0.7 km  11.3  255
+ 3  RECOVERY  —      11:04     5 min    1.5 km     —    —
+ 4  WORK      —      11:09       6 s    0.0 km  17.3  510
+ 5  RECOVERY  —      11:09     1 min    0.6 km     —    —
+ 6  WORK      —      11:11       5 s    0.0 km  20.8  418
+ …  …         …          …         …         …     …    …
+95  RECOVERY  —      16:23     1 min    0.7 km     —    —
+96  WORK      —      16:25      10 s    0.1 km  27.1  468
+97  RECOVERY  —      16:25     6 min    2.8 km     —    —
 
 New
- #  Type      Label         Start  Duration  Distance  km/h    W
- 1  WORK      Warmup    Sat 06:30    10 min    3.6 km  21.4  123
- 2  WORK      Leg 1     Sat 06:40    3:40 h   72.1 km  19.7  121
- 3  RECOVERY  —         Sat 10:20    11 min    0.0 km     —    —
- 4  WORK      Leg 2     Sat 10:32    2:16 h   40.4 km  18.0  111
- 5  RECOVERY  —         Sat 12:49    11 min    0.2 km     —    —
- 6  WORK      Leg 3     Sat 13:00    1:05 h   14.8 km  15.1   81
- 7  RECOVERY  —         Sat 14:05    14 min    0.0 km     —    —
- 8  WORK      Leg 4     Sat 14:20    2:26 h   41.8 km  17.5  117
- 9  RECOVERY  —         Sat 16:47   15:15 h    0.2 km     —    —
-10  WORK      Leg 5     Sun 08:02    3:01 h   59.3 km  20.2  103
-11  RECOVERY  —         Sun 11:04     6 min    0.2 km     —    —
-12  WORK      Leg 6     Sun 11:11    1:25 h   24.6 km  18.9   92
-13  RECOVERY  —         Sun 12:36    11 min    0.0 km     —    —
-14  WORK      Leg 7     Sun 12:47    2:57 h   60.9 km  20.8  109
-15  RECOVERY  —         Sun 15:45    15 min    0.0 km     —    —
-16  WORK      Leg 8     Sun 16:00    1:23 h   30.7 km  22.1  122
-17  WORK      Cooldown  Sun 17:24    10 min    3.2 km  19.4  124
-  10 legs · 18:37 h · 351.5 km   |   7 pauses · 16:26 h
+#  Type      Label     Start  Duration  Distance  km/h    W
+1  WORK      Warmup    10:58    17 min    5.0 km  17.1  195
+2  WORK      Leg 1     11:16    1:13 h   21.0 km  19.6  133
+3  RECOVERY  —         12:29    10 min    0.0 km     —    —
+4  WORK      Leg 2     12:40    1:06 h   22.0 km  19.8  148
+5  RECOVERY  —         13:47    11 min    0.0 km     —    —
+6  WORK      Leg 3     13:58    2:20 h   43.9 km  19.4  140
+7  WORK      Cooldown  16:19    12 min    5.0 km  23.5   99
+  5 legs · 5:11 h · 96.9 km   |   2 pauses · 21 min
 
-  Replace the 4 intervals with these 17? [y/n] (n):
+  Replace the 97 intervals with these 7? [y/n] (n):
 ```
 
-`Now` is what the activity has, `New` what it will get. The first interval used
-to run for 25 hours including the night; now the night is a pause of its own
-and every leg gets honest averages.
+`Now` is what the activity has, `New` what it will get: 5 km out of town and
+5 km back in as warmup and cooldown, three legs, and the two real stops
+between them. A long `Now` list is cut down to its first and last few rows;
+the timeline above it always shows everything.
 
 The timeline is drawn to scale. A pause shorter than one column still shows up,
-as a thin `╎`, so a ten-minute stop stays visible on a two-day timeline without
-looking like an hour. In the terminal, consecutive legs alternate between
+as a thin `╎`, so a short stop stays visible even on a two-day bikepacking
+trip without looking longer than it was. In the terminal, consecutive legs alternate between
 green and cyan.
 
 ## How pauses are found
@@ -86,9 +87,10 @@ green and cyan.
   through town stays moving.
 
 Getting out of town and back in can be split off as well: `--edges 10m` turns
-the first and last ten minutes into `Warmup` and `Cooldown` intervals. Give a distance instead with `--edges 3km`, or two values to set
-start and end separately: `--edges 3km 10m`. A distance ignores the time spent
-at traffic lights, so it tends to match "until I'm out of town" better.
+the first and last ten minutes into `Warmup` and `Cooldown` intervals. Give a
+distance instead with `--edges 5km`, or two values to set start and end
+separately: `--edges 3km,10m`. A distance ignores the time spent at traffic
+lights, so it tends to match "until I'm out of town" better.
 
 ## What gets written
 
@@ -102,19 +104,19 @@ ones are saved to `~/.local/state/intervals-icu-pause-split/backups/` (or
 `$XDG_STATE_HOME`), and the tool prints the command that puts them back:
 
 ```
-uvx intervals-icu-pause-split i181405932 --restore ~/.local/state/intervals-icu-pause-split/backups/i181405932-20261006-044729.json
+uvx intervals-icu-pause-split i87942121 --restore ~/.local/state/intervals-icu-pause-split/backups/i87942121-20261006-044729.json
 ```
 
 ## Usage
 
 ```
-uvx intervals-icu-pause-split i181405932                   # preview, then ask before writing
-uvx intervals-icu-pause-split i181405932 --dry-run         # preview, never write
-uvx intervals-icu-pause-split i181405932 --min-pause 10m   # only the longer stops
-uvx intervals-icu-pause-split i181405932 --edges 10m       # warmup and cooldown of 10 minutes
-uvx intervals-icu-pause-split i181405932 --edges 3km 10m   # 3 km warmup, 10 minute cooldown
-uvx intervals-icu-pause-split i181405932 --label Etappe    # "Etappe 1", "Etappe 2", …
-uvx intervals-icu-pause-split i181405932 --yes             # write without asking
+uvx intervals-icu-pause-split i87942121                   # preview, then ask before writing
+uvx intervals-icu-pause-split i87942121 --dry-run         # preview, never write
+uvx intervals-icu-pause-split i87942121 --min-pause 10m   # only the longer stops
+uvx intervals-icu-pause-split i87942121 --edges 10m       # warmup and cooldown of 10 minutes
+uvx intervals-icu-pause-split i87942121 --edges 3km,10m   # 3 km warmup, 10 minute cooldown
+uvx intervals-icu-pause-split i87942121 --label Etappe    # "Etappe 1", "Etappe 2", …
+uvx intervals-icu-pause-split i87942121 --yes             # write without asking
 ```
 
 Durations are written as `90s`, `5m` or `1.5h`; a bare number means minutes.
@@ -139,7 +141,7 @@ INTERVALS_ICU_API_KEY=your_key_here
 | `--min-pause` | `5m` | Minimum standstill for a pause |
 | `--merge` | `60s` | Stops with less moving than this in between count as one pause |
 | `--stop-speed` | `1` on foot, `3` otherwise | Below this speed (km/h) you count as standing still |
-| `--edges` | | Split off the first and last stretch as `Warmup` and `Cooldown`, as a duration (`10m`) or a distance (`3km`); one value for both ends or two for start and end |
+| `--edges` | | Split off the first and last stretch as `Warmup` and `Cooldown`, as a duration (`10m`) or a distance (`3km`); one value for both ends or two, comma-separated, for start and end |
 | `--label` | `Leg` | Label prefix for the moving intervals |
 | `--width` | terminal width | Width of the timeline |
 | `--restore` | | Put back the intervals from a backup file |
@@ -151,8 +153,8 @@ INTERVALS_ICU_API_KEY=your_key_here
 ```
 just test                      # run the suite with coverage
 just coverage                  # the same, as a browsable HTML report
-just check i181405932          # dry run against your own account
-just run i181405932            # run for real, with the confirmation prompt
+just check i87942121          # dry run against your own account
+just run i87942121            # run for real, with the confirmation prompt
 just build                     # build the distribution
 ```
 

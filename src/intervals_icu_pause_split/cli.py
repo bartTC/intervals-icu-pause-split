@@ -61,6 +61,11 @@ PAUSE_CHAR = "░"
 SHORT_PAUSE_CHAR = "╎"  # a pause shorter than one column
 PAUSE_STYLE = "yellow"
 
+# The current intervals can be dozens of auto-detected few-second efforts; the
+# timeline shows them all, the table only the first and last few.
+SHORT_HEAD = 6
+SHORT_TAIL = 3
+
 console = Console(highlight=False)
 
 # Panels auf eine lesbare Breite begrenzen, statt sie das Terminal ausfuellen zu
@@ -330,13 +335,26 @@ def fmt_clock(dt: datetime, with_day: bool) -> str:
     return f"{WEEKDAYS[dt.weekday()]} {dt:%H:%M}" if with_day else f"{dt:%H:%M}"
 
 
-def render_table(s: Streams, segments: list[Segment], start_dt: datetime, stop_speed: float, title: str) -> Table:
+def render_table(
+    s: Streams, segments: list[Segment], start_dt: datetime, stop_speed: float, title: str, short: bool = False
+) -> Table:
+    """List the intervals; `short` keeps only the first and last few of a long list."""
+    numbered = list(enumerate(segments, 1))
+    hidden = len(numbered) - SHORT_HEAD - SHORT_TAIL
+    if short and hidden > 1:
+        numbered = [*numbered[:SHORT_HEAD], None, *numbered[-SHORT_TAIL:]]
+        title += f"  [dim]{len(segments)} intervals, {hidden} not shown[/]"
+
     multi_day = (start_dt + timedelta(seconds=s.t(len(s)))).date() != start_dt.date()
     table = Table(title=title, title_justify="left", header_style="bold", box=None, pad_edge=False)
     for name in ("#", "Type", "Label", "Start", "Duration", "Distance", "km/h", "W"):
         table.add_column(name, justify="left" if name in ("Type", "Label") else "right")
 
-    for no, seg in enumerate(segments, 1):
+    for row in numbered:
+        if row is None:
+            table.add_row(*["…"] * 8, style="dim")
+            continue
+        no, seg = row
         st = segment_stats(s, seg, stop_speed)
         moving = not seg.is_pause
         table.add_row(
@@ -501,6 +519,19 @@ def parse_edge(text: str) -> Edge:
         raise argparse.ArgumentTypeError(f"invalid edge {text!r}, use a duration (10m) or a distance (3km)") from None
 
 
+def parse_edges(text: str) -> tuple[Edge, Edge]:
+    """'5km' for both ends, '3km,10m' for warmup and cooldown separately.
+
+    One comma-separated value rather than nargs, which would swallow the
+    activity URL in `--edges 5km https://...`.
+    """
+    parts = text.split(",")
+    if len(parts) > 2:
+        raise argparse.ArgumentTypeError(f"invalid edges {text!r}, give one length for both ends or two: 3km,10m")
+    edges = [parse_edge(x) for x in parts]
+    return edges[0], edges[-1]
+
+
 def parse_activity_id(text: str) -> str:
     """Accept the bare id or the activity's intervals.icu URL."""
     m = re.search(r"/activities/([^/?#]+)", text)
@@ -525,10 +556,10 @@ def build_parser() -> argparse.ArgumentParser:
         f"(default: {STOP_SPEED_ON_FOOT:g} on foot, {STOP_SPEED:g} otherwise)",
     )
     p.add_argument(
-        "--edges", type=parse_edge, nargs="+", metavar="LENGTH",
+        "--edges", type=parse_edges, metavar="LENGTH[,LENGTH]",
         help="Split the first and last LENGTH of moving into Warmup and Cooldown intervals, e.g. for getting "
         "out of and back into town. A duration (10m) or a distance (3km); two values set them separately: "
-        "--edges 3km 10m",
+        "--edges 3km,10m",
     )
     p.add_argument("--label", default="Leg", help="Label prefix for the moving intervals (default: Leg)")
     p.add_argument("--width", type=int, help="Width of the timeline (default: terminal width)")
@@ -561,11 +592,8 @@ def main() -> None:
 
 
 def run() -> None:
-    parser = build_parser()
-    args = parser.parse_args()
-    if args.edges and len(args.edges) > 2:
-        parser.error("--edges takes one length for both ends, or two for start and end")
-    warmup, cooldown = (args.edges[0], args.edges[-1]) if args.edges else (None, None)
+    args = build_parser().parse_args()
+    warmup, cooldown = args.edges or (None, None)
     if args.width:
         console.width = args.width
     api = Api(resolve_api_key(args))
@@ -613,7 +641,7 @@ def run() -> None:
         console.print(line, no_wrap=True)
     console.print()
     if current_segments:
-        console.print(render_table(streams, current_segments, start_dt, stop_speed, "Now"))
+        console.print(render_table(streams, current_segments, start_dt, stop_speed, "Now", short=True))
     else:
         console.print("[bold]Now[/]  [dim]no intervals[/]")
     console.print()
