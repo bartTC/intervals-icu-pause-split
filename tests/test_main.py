@@ -8,11 +8,11 @@ from helpers import as_json, make_streams
 
 from intervals_icu_pause_split import cli
 
-# Two rides with a 400 s standstill between them: Ride 1 is 0-600, Ride 2 is 1000-1600.
+# Two legs with a 400 s standstill between them: Leg 1 is 0-600, Leg 2 is 1000-1600.
 STREAMS = make_streams(("ride", 600), ("stop", 400), ("ride", 600))
 RIDES = [
-    {"start_index": 0, "end_index": 600, "type": "WORK", "label": "Ride 1"},
-    {"start_index": 1000, "end_index": 1600, "type": "WORK", "label": "Ride 2"},
+    {"start_index": 0, "end_index": 600, "type": "WORK", "label": "Leg 1"},
+    {"start_index": 1000, "end_index": 1600, "type": "WORK", "label": "Leg 2"},
 ]
 ONE_BIG_INTERVAL = [{"id": 7, "start_index": 0, "end_index": 1600, "type": "WORK", "label": None}]
 
@@ -20,16 +20,24 @@ ONE_BIG_INTERVAL = [{"id": 7, "start_index": 0, "end_index": 1600, "type": "WORK
 class FakeApi:
     """Answers the three GETs main() makes and records any PUT."""
 
-    def __init__(self, intervals=None, activity_id="i1"):
+    def __init__(self, intervals=None, activity_id="i1", sport="GravelRide", streams=None):
         self.intervals = {"id": activity_id, "icu_intervals": intervals or []}
+        self.sport = sport
+        self.streams = streams or STREAMS
         self.puts = []
 
     def get(self, path, **params):
         if path.endswith("/streams.json"):
-            return as_json(STREAMS)
+            return as_json(self.streams)
         if path.endswith("/intervals"):
             return self.intervals
-        return {"id": "i1", "name": "Saturday [gravel]", "start_date_local": "2026-08-29T06:30:00", "distance": 9600}
+        return {
+            "id": "i1",
+            "type": self.sport,
+            "name": "Saturday [gravel]",
+            "start_date_local": "2026-08-29T06:30:00",
+            "distance": 9600,
+        }
 
     def put(self, path, body, **params):
         self.puts.append((path, body, params))
@@ -61,8 +69,8 @@ def test_dry_run_previews_but_never_writes(run, capsys, tmp_path):
     api = FakeApi(ONE_BIG_INTERVAL)
     out = run(api, "i1", "--dry-run", capsys=capsys)
     assert "Saturday [gravel]" in out
-    assert "Ride 2" in out
-    assert "2 rides · 20 min · 9.6 km   |   1 pause · 6 min" in out
+    assert "Leg 2" in out
+    assert "2 legs · 20 min · 9.6 km   |   1 pause · 6 min" in out
     assert "nothing written" in out
     assert api.puts == []
     assert backups(tmp_path) == []
@@ -167,11 +175,11 @@ def test_edges_write_warmup_and_cooldown(run, capsys):
     out = run(api, "i1", "--yes", "--edges", "2m", "3m", capsys=capsys)
     assert [(x["start_index"], x["end_index"], x["label"]) for x in api.puts[0][1]] == [
         (0, 120, "Warmup"),
-        (120, 600, "Ride 1"),
-        (1000, 1420, "Ride 2"),
+        (120, 600, "Leg 1"),
+        (1000, 1420, "Leg 2"),
         (1420, 1600, "Cooldown"),
     ]
-    assert "Warmup: first 2 min of riding · Cooldown: last 3 min" in out
+    assert "Warmup: first 2 min · Cooldown: last 3 min" in out
 
 
 def test_edges_in_km(run, capsys):
@@ -180,11 +188,11 @@ def test_edges_in_km(run, capsys):
     # 8 m/s: the first kilometre ends at sample 125, the last one starts at 1474.
     assert [(x["start_index"], x["end_index"], x["label"]) for x in api.puts[0][1]] == [
         (0, 125, "Warmup"),
-        (125, 600, "Ride 1"),
-        (1000, 1474, "Ride 2"),
+        (125, 600, "Leg 1"),
+        (1000, 1474, "Leg 2"),
         (1474, 1600, "Cooldown"),
     ]
-    assert "Warmup: first 1 km of riding · Cooldown: last 1 km" in out
+    assert "Warmup: first 1 km · Cooldown: last 1 km" in out
 
 
 def test_edges_in_km_need_a_distance_stream(run, capsys, monkeypatch):
@@ -217,6 +225,35 @@ def test_parse_edge(text, edge):
 def test_parse_edge_rejects_other_units():
     with pytest.raises(argparse.ArgumentTypeError, match="duration .* or a distance"):
         cli.parse_edge("3mi")
+
+
+def slow_climb():
+    """400 s at 2 km/h between two faster stretches: a steep climb on foot, a stop on a bike."""
+    s = make_streams(("ride", 1600))
+    s.speed[600:1000] = [2 / 3.6] * 400
+    return s
+
+
+def test_stop_speed_defaults_to_standing_still_on_a_bike(run, capsys):
+    api = FakeApi(streams=slow_climb())
+    out = run(api, "i1", "--yes", capsys=capsys)
+    assert len(api.puts[0][1]) == 2
+    assert "below 3 km/h" in out
+    assert "GravelRide ·" in out
+
+
+def test_stop_speed_defaults_to_walking_pace_on_foot(run, capsys):
+    api = FakeApi(streams=slow_climb(), sport="Hike")
+    out = run(api, "i1", "--yes", capsys=capsys)
+    assert len(api.puts[0][1]) == 1
+    assert "below 1 km/h" in out
+    assert "Hike ·" in out
+
+
+def test_stop_speed_flag_overrides_the_sport_default(run, capsys):
+    api = FakeApi(streams=slow_climb(), sport="Hike")
+    run(api, "i1", "--yes", "--stop-speed", "3", capsys=capsys)
+    assert len(api.puts[0][1]) == 2
 
 
 def test_restore_puts_back_the_rides_from_a_backup(run, capsys, tmp_path):

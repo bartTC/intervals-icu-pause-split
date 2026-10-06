@@ -1,13 +1,13 @@
 [project]
 name = "intervals-icu-pause-split"
 version = "0.1.0"
-description = "Split intervals.icu activities into riding and pause intervals, with a preview before anything is written"
+description = "Split intervals.icu activities into moving and pause intervals, with a preview before anything is written"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Martin Mahner" }]
-keywords = ["intervals.icu", "cycling", "intervals", "laps", "pause", "bikepacking"]
+keywords = ["intervals.icu", "cycling", "hiking", "intervals", "laps", "pause", "bikepacking"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",

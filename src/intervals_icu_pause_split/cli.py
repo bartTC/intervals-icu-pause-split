@@ -1,11 +1,11 @@
-"""Split an intervals.icu activity into riding and pause intervals.
+"""Split an intervals.icu activity into moving and pause intervals.
 
 A pause is a stretch where you stood still (slower than --stop-speed) or the
 device stopped recording, which is what auto-pause leaves behind: a jump in the
-time stream. Stops with less than --merge of riding in between count as one
+time stream. Stops with less than --merge of moving in between count as one
 pause, and only pauses with at least --min-pause of standstill are kept.
 
-Only the riding blocks are written, as WORK intervals. intervals.icu fills the
+Only the moving legs are written, as WORK intervals. intervals.icu fills the
 gaps between them with RECOVERY intervals on its own; it does not accept
 RECOVERY intervals (or labels on them) through the API.
 
@@ -42,15 +42,21 @@ BASE = "https://intervals.icu/api/v1"
 # Consecutive samples further apart than this mean the device was paused.
 RECORDING_GAP_S = 10
 
+# km/h below which you count as standing still. On foot a steep climb easily
+# drops below 3 km/h, while GPS drift at a real stop stays under 1 km/h.
+STOP_SPEED = 3.0
+STOP_SPEED_ON_FOOT = 1.0
+FOOT_TYPES = {"Hike", "Walk", "Run", "TrailRun", "VirtualRun", "Snowshoe"}
+
 WARMUP_LABEL = "Warmup"
 COOLDOWN_LABEL = "Cooldown"
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 SPARK = "▁▂▃▄▅▆▇█"
-# Rides are always solid; the colour alternates so adjacent rides stay apart.
-# A shaded block for every other ride reads as a pause in many fonts.
-RIDE_CHAR = "█"
-RIDE_STYLES = ("green", "cyan")
+# Legs are always solid; the colour alternates so adjacent legs stay apart.
+# A shaded block for every other leg reads as a pause in many fonts.
+LEG_CHAR = "█"
+LEG_STYLES = ("green", "cyan")
 PAUSE_CHAR = "░"
 SHORT_PAUSE_CHAR = "╎"  # a pause shorter than one column
 PAUSE_STYLE = "yellow"
@@ -196,7 +202,7 @@ def find_pauses(s: Streams, stop_speed: float, min_pause: float, merge: float) -
 
 @dataclass(frozen=True)
 class Edge:
-    """How much riding --edges splits off: seconds, or metres when by_distance."""
+    """How much --edges splits off: seconds, or metres when by_distance."""
 
     amount: float
     by_distance: bool = False
@@ -212,7 +218,7 @@ class Edge:
 def build_segments(
     s: Streams,
     pauses: list[tuple[int, int]],
-    ride_label: str,
+    leg_label: str,
     warmup: Edge | None = None,
     cooldown: Edge | None = None,
 ) -> list[Segment]:
@@ -228,7 +234,7 @@ def build_segments(
 
     segments = split_edges(s, segments, warmup, cooldown)
     for no, seg in enumerate((x for x in segments if not x.is_pause and not x.label), 1):
-        seg.label = f"{ride_label} {no}"
+        seg.label = f"{leg_label} {no}"
     return segments
 
 
@@ -238,36 +244,36 @@ def first_reaching(s: Streams, edge: Edge, target: float, lo: int, hi: int) -> i
 
 
 def split_edges(s: Streams, segments: list[Segment], warmup: Edge | None, cooldown: Edge | None) -> list[Segment]:
-    """Cut the first `warmup` and last `cooldown` of riding into intervals of their own.
+    """Cut the first `warmup` and last `cooldown` of moving into intervals of their own.
 
-    Meant for riding out of and back into town, so the stop-and-go doesn't
-    dilute the first and last block. A ride too short to split becomes the
+    Meant for getting out of and back into town, so the stop-and-go doesn't
+    dilute the first and last leg. A leg too short to split becomes the
     warmup or cooldown as a whole.
     """
-    rides = [i for i, x in enumerate(segments) if not x.is_pause]
-    if not rides:
+    legs = [i for i, x in enumerate(segments) if not x.is_pause]
+    if not legs:
         return segments
     out = list(segments)
 
-    # The cooldown goes first: splitting the last ride never shifts the index of the first.
+    # The cooldown goes first: splitting the last leg never shifts the index of the first.
     if cooldown and cooldown.amount:
-        seg = out[rides[-1]]
+        seg = out[legs[-1]]
         cut = first_reaching(s, cooldown, cooldown.position(s, seg.end) - cooldown.amount, seg.start, seg.end)
         if cut <= seg.start:
             seg.label = COOLDOWN_LABEL
         else:
-            out[rides[-1] : rides[-1] + 1] = [
+            out[legs[-1] : legs[-1] + 1] = [
                 Segment("WORK", seg.start, cut),
                 Segment("WORK", cut, seg.end, COOLDOWN_LABEL),
             ]
 
-    seg = out[rides[0]]
+    seg = out[legs[0]]
     if warmup and warmup.amount and not seg.label:
         cut = first_reaching(s, warmup, warmup.position(s, seg.start) + warmup.amount, seg.start, seg.end)
         if cut >= seg.end:
             seg.label = WARMUP_LABEL
         else:
-            out[rides[0] : rides[0] + 1] = [
+            out[legs[0] : legs[0] + 1] = [
                 Segment("WORK", seg.start, cut, WARMUP_LABEL),
                 Segment("WORK", cut, seg.end),
             ]
@@ -332,7 +338,7 @@ def render_table(s: Streams, segments: list[Segment], start_dt: datetime, stop_s
 
     for no, seg in enumerate(segments, 1):
         st = segment_stats(s, seg, stop_speed)
-        riding = not seg.is_pause
+        moving = not seg.is_pause
         table.add_row(
             str(no),
             seg.type,
@@ -340,8 +346,8 @@ def render_table(s: Streams, segments: list[Segment], start_dt: datetime, stop_s
             fmt_clock(start_dt + timedelta(seconds=s.t(seg.start)), multi_day),
             fmt_duration(st.elapsed),
             f"{st.distance / 1000:.1f} km",
-            f"{st.distance / st.moving * 3.6:.1f}" if riding and st.moving else "—",
-            f"{st.watts:.0f}" if riding and st.watts is not None else "—",
+            f"{st.distance / st.moving * 3.6:.1f}" if moving and st.moving else "—",
+            f"{st.watts:.0f}" if moving and st.watts is not None else "—",
             style=PAUSE_STYLE if seg.is_pause else None,
         )
     return table
@@ -376,13 +382,13 @@ def render_timeline(s: Streams, rows: list[tuple[str, list[Segment]]], start_dt:
     for name, segments in rows:
         band: list[tuple[str, str | None]] = [(" ", None)] * cols
         looks: list[tuple[Segment, str, str]] = []
-        rides = 0
+        legs = 0
         for seg in segments:
             if seg.is_pause:
                 looks.append((seg, PAUSE_CHAR, PAUSE_STYLE))
             else:
-                looks.append((seg, RIDE_CHAR, RIDE_STYLES[rides % 2]))
-                rides += 1
+                looks.append((seg, LEG_CHAR, LEG_STYLES[legs % 2]))
+                legs += 1
 
         # Every interval covers the columns whose midpoint it contains, which
         # keeps the widths proportional to the time ...
@@ -394,7 +400,7 @@ def render_timeline(s: Streams, rows: list[tuple[str, list[Segment]]], start_dt:
                 tiny.append((seg, char, style, min(cols - 1, int(lo))))
             for c in covered:
                 band[c] = (char, style)
-        # ... and one too short for that still shows up: a ride (a 5 km warmup on a
+        # ... and one too short for that still shows up: a leg (a 5 km warmup on a
         # two-day trip) as a block, a pause as a thin mark. Painted last, pauses on
         # top, so the neighbour can't swallow them.
         for seg, char, style, c in sorted(tiny, key=lambda x: x[0].is_pause):
@@ -426,7 +432,7 @@ def render_timeline(s: Streams, rows: list[tuple[str, list[Segment]]], start_dt:
     lines.append(Text(" " * (label_w + 2) + "".join(labels).rstrip()))
 
     legend = Text(" " * (label_w + 2))
-    legend.append(RIDE_CHAR, RIDE_STYLES[0]).append(RIDE_CHAR, RIDE_STYLES[1]).append(" ride   ")
+    legend.append(LEG_CHAR, LEG_STYLES[0]).append(LEG_CHAR, LEG_STYLES[1]).append(" moving   ")
     legend.append(PAUSE_CHAR, PAUSE_STYLE).append(" pause   ")
     legend.append(SHORT_PAUSE_CHAR, PAUSE_STYLE).append(" shorter pause   ")
     legend.append(f"{SPARK[0]}…{SPARK[-1]}", "blue").append(f" speed up to {vmax * 3.6:.0f} km/h")
@@ -436,13 +442,13 @@ def render_timeline(s: Streams, rows: list[tuple[str, list[Segment]]], start_dt:
 
 
 def render_summary(s: Streams, segments: list[Segment]) -> str:
-    rides = [x for x in segments if not x.is_pause]
+    legs = [x for x in segments if not x.is_pause]
     pauses = [x for x in segments if x.is_pause]
-    ride_s = sum(s.t(x.end) - s.t(x.start) for x in rides)
-    ride_km = sum(s.distance_at(x.end) - s.distance_at(x.start) for x in rides) / 1000
+    leg_s = sum(s.t(x.end) - s.t(x.start) for x in legs)
+    leg_km = sum(s.distance_at(x.end) - s.distance_at(x.start) for x in legs) / 1000
     pause_s = sum(s.t(x.end) - s.t(x.start) for x in pauses)
     return (
-        f"  {len(rides)} {'ride' if len(rides) == 1 else 'rides'} · {fmt_duration(ride_s)} · {ride_km:.1f} km"
+        f"  {len(legs)} {'leg' if len(legs) == 1 else 'legs'} · {fmt_duration(leg_s)} · {leg_km:.1f} km"
         f"   |   {len(pauses)} {'pause' if len(pauses) == 1 else 'pauses'} · {fmt_duration(pause_s)}"
     )
 
@@ -511,19 +517,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--merge", type=parse_duration, default=parse_duration("60s"), metavar="DURATION",
-        help="Stops with less riding than this in between count as one pause (default: 60s)",
+        help="Stops with less moving than this in between count as one pause (default: 60s)",
     )
     p.add_argument(
-        "--stop-speed", type=float, default=3.0, metavar="KMH",
-        help="Below this speed you count as standing still, in km/h (default: 3)",
+        "--stop-speed", type=float, metavar="KMH",
+        help=f"Below this speed you count as standing still, in km/h "
+        f"(default: {STOP_SPEED_ON_FOOT:g} on foot, {STOP_SPEED:g} otherwise)",
     )
     p.add_argument(
         "--edges", type=parse_edge, nargs="+", metavar="LENGTH",
-        help="Split the first and last LENGTH of riding into Warmup and Cooldown intervals, e.g. for riding "
+        help="Split the first and last LENGTH of moving into Warmup and Cooldown intervals, e.g. for getting "
         "out of and back into town. A duration (10m) or a distance (3km); two values set them separately: "
         "--edges 3km 10m",
     )
-    p.add_argument("--label", default="Ride", help="Label prefix for the riding intervals (default: Ride)")
+    p.add_argument("--label", default="Leg", help="Label prefix for the moving intervals (default: Leg)")
     p.add_argument("--width", type=int, help="Width of the timeline (default: terminal width)")
     p.add_argument("--restore", type=Path, metavar="BACKUP", help="Put back the intervals from a backup file")
     p.add_argument("--dry-run", action="store_true", help="Show the preview, never write")
@@ -568,7 +575,11 @@ def run() -> None:
     streams = fetch_streams(api, activity_id)
     current = api.get(f"/activity/{activity_id}/intervals") or {}
     current_segments = segments_from_intervals(current.get("icu_intervals") or [])
-    stop_speed = args.stop_speed / 3.6
+    sport = activity.get("type") or "activity"
+    stop_kmh = args.stop_speed
+    if stop_kmh is None:
+        stop_kmh = STOP_SPEED_ON_FOOT if sport in FOOT_TYPES else STOP_SPEED
+    stop_speed = stop_kmh / 3.6
 
     if any(x.by_distance for x in args.edges or []) and not streams.distance:
         fail(f"Activity {activity_id} has no distance stream, so give --edges as a duration (10m), not in km.")
@@ -580,17 +591,18 @@ def run() -> None:
         pauses = find_pauses(streams, stop_speed, args.min_pause, args.merge)
         new_segments = build_segments(streams, pauses, args.label, warmup, cooldown)
         rule = (
-            f"Pause: at least {fmt_duration(args.min_pause)} below {args.stop_speed:g} km/h or not recording; "
+            f"Pause: at least {fmt_duration(args.min_pause)} below {stop_kmh:g} km/h or not recording; "
             f"stops less than {fmt_duration(args.merge)} apart are merged"
         )
         if args.edges:
-            rule += f"\n  Warmup: first {warmup} of riding · Cooldown: last {cooldown}"
+            rule += f"\n  Warmup: first {warmup} · Cooldown: last {cooldown}"
 
     start_dt = datetime.fromisoformat(activity["start_date_local"])
     elapsed = streams.t(len(streams)) - streams.time[0]
     header = (
         f"[bold]{escape(activity.get('name') or activity_id)}[/]\n"
-        f"{fmt_clock(start_dt, True)}, {start_dt:%Y-%m-%d} · {(activity.get('distance') or 0) / 1000:.1f} km"
+        f"{escape(sport)} · {fmt_clock(start_dt, True)}, {start_dt:%Y-%m-%d}"
+        f" · {(activity.get('distance') or 0) / 1000:.1f} km"
         f" · {fmt_duration(elapsed)} elapsed"
     )
     console.print()

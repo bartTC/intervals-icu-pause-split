@@ -67,10 +67,10 @@ def test_missing_speed_samples_are_not_standstill():
 
 def test_pauses_at_the_start_and_the_end():
     s = make_streams(("stop", 400), ("ride", 600), ("stop", 400))
-    segments = cli.build_segments(s, pauses(s), "Ride")
+    segments = cli.build_segments(s, pauses(s), "Leg")
     assert [(x.type, x.start, x.end, x.label) for x in segments] == [
         ("RECOVERY", 0, 400, ""),
-        ("WORK", 400, 1000, "Ride 1"),
+        ("WORK", 400, 1000, "Leg 1"),
         ("RECOVERY", 1000, 1400, ""),
     ]
 
@@ -86,12 +86,12 @@ def test_segments_cover_the_activity_without_overlap():
 
 def test_edges_split_off_warmup_and_cooldown():
     s = make_streams(("ride", 1800), ("stop", 400), ("ride", 1800))
-    segments = cli.build_segments(s, pauses(s), "Ride", warmup=Edge(600), cooldown=Edge(300))
+    segments = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(600), cooldown=Edge(300))
     assert [(x.type, x.start, x.end, x.label) for x in segments] == [
         ("WORK", 0, 600, "Warmup"),
-        ("WORK", 600, 1800, "Ride 1"),
+        ("WORK", 600, 1800, "Leg 1"),
         ("RECOVERY", 1800, 2200, ""),
-        ("WORK", 2200, 3700, "Ride 2"),
+        ("WORK", 2200, 3700, "Leg 2"),
         ("WORK", 3700, 4000, "Cooldown"),
     ]
 
@@ -99,30 +99,30 @@ def test_edges_split_off_warmup_and_cooldown():
 def test_edges_count_elapsed_time_across_an_auto_pause_gap():
     # A short traffic-light gap inside the warmup still counts towards its 10 minutes.
     s = make_streams(("ride", 300), ("gap", 120), ("ride", 1800))
-    [warmup, ride] = cli.build_segments(s, pauses(s), "Ride", warmup=Edge(600))
+    [warmup, ride] = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(600))
     assert (warmup.label, warmup.start, warmup.end) == ("Warmup", 0, 480)
-    assert (ride.label, ride.start) == ("Ride 1", 480)
+    assert (ride.label, ride.start) == ("Leg 1", 480)
 
 
 def test_edges_on_a_single_ride():
     s = make_streams(("ride", 3600))
-    segments = cli.build_segments(s, [], "Ride", warmup=Edge(600), cooldown=Edge(600))
+    segments = cli.build_segments(s, [], "Leg", warmup=Edge(600), cooldown=Edge(600))
     assert [(x.start, x.end, x.label) for x in segments] == [
         (0, 600, "Warmup"),
-        (600, 3000, "Ride 1"),
+        (600, 3000, "Leg 1"),
         (3000, 3600, "Cooldown"),
     ]
 
 
 def test_ride_shorter_than_the_edge_becomes_the_edge_as_a_whole():
     s = make_streams(("ride", 300), ("stop", 400), ("ride", 1800), ("stop", 400), ("ride", 200))
-    segments = cli.build_segments(s, pauses(s), "Ride", warmup=Edge(600), cooldown=Edge(600))
-    assert [x.label for x in segments] == ["Warmup", "", "Ride 1", "", "Cooldown"]
+    segments = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(600), cooldown=Edge(600))
+    assert [x.label for x in segments] == ["Warmup", "", "Leg 1", "", "Cooldown"]
 
 
 def test_one_short_ride_is_the_cooldown_and_gets_no_warmup():
     s = make_streams(("ride", 300))
-    segments = cli.build_segments(s, [], "Ride", warmup=Edge(600), cooldown=Edge(600))
+    segments = cli.build_segments(s, [], "Leg", warmup=Edge(600), cooldown=Edge(600))
     assert [(x.start, x.end, x.label) for x in segments] == [(0, 300, "Cooldown")]
 
 
@@ -134,24 +134,24 @@ def test_edges_without_any_riding_change_nothing():
 def test_edges_by_distance():
     # 8 m/s, so one kilometre is 125 samples.
     s = make_streams(("ride", 3600))
-    segments = cli.build_segments(s, [], "Ride", warmup=Edge(1000, by_distance=True), cooldown=Edge(1000, by_distance=True))
+    segments = cli.build_segments(s, [], "Leg", warmup=Edge(1000, by_distance=True), cooldown=Edge(1000, by_distance=True))
     assert [(x.start, x.end, x.label) for x in segments] == [
         (0, 125, "Warmup"),
-        (125, 3474, "Ride 1"),
+        (125, 3474, "Leg 1"),
         (3474, 3600, "Cooldown"),
     ]
 
 
 def test_edges_mix_distance_and_time():
     s = make_streams(("ride", 3600))
-    segments = cli.build_segments(s, [], "Ride", warmup=Edge(1000, by_distance=True), cooldown=Edge(600))
+    segments = cli.build_segments(s, [], "Leg", warmup=Edge(1000, by_distance=True), cooldown=Edge(600))
     assert [(x.start, x.end) for x in segments] == [(0, 125), (125, 3000), (3000, 3600)]
 
 
 def test_distance_edge_ignores_time_spent_standing():
     # A traffic-light stop inside the first kilometre adds time but no distance.
     s = make_streams(("ride", 60), ("stop", 120), ("ride", 1800))
-    [warmup, _] = cli.build_segments(s, pauses(s), "Ride", warmup=Edge(1000, by_distance=True))
+    [warmup, _] = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(1000, by_distance=True))
     assert (warmup.start, warmup.end) == (0, 245)
 
 
@@ -163,13 +163,13 @@ def test_edge_describes_itself():
 
 def test_no_pauses_means_one_ride():
     s = make_streams(("ride", 600))
-    assert [(x.type, x.start, x.end) for x in cli.build_segments(s, [], "Ride")] == [("WORK", 0, 600)]
+    assert [(x.type, x.start, x.end) for x in cli.build_segments(s, [], "Leg")] == [("WORK", 0, 600)]
 
 
 def test_payload_sends_only_the_rides():
-    segments = [Segment("WORK", 0, 10, "Ride 1"), Segment("RECOVERY", 10, 20), Segment("WORK", 20, 30)]
+    segments = [Segment("WORK", 0, 10, "Leg 1"), Segment("RECOVERY", 10, 20), Segment("WORK", 20, 30)]
     assert cli.payload(segments) == [
-        {"start_index": 0, "end_index": 10, "type": "WORK", "label": "Ride 1"},
+        {"start_index": 0, "end_index": 10, "type": "WORK", "label": "Leg 1"},
         {"start_index": 20, "end_index": 30, "type": "WORK", "label": None},
     ]
 
