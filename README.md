@@ -24,11 +24,11 @@ A two-day bikepacking trip, recorded as one activity with auto-pause on:
   Warmup: first 10 min of riding · Cooldown: last 10 min
 
 Speed     │▇▇▇▇▇▇▇▇▇▆▆▆▆▆▆▆▃▅▆▆▆▇▇▆▅▆                                      ▆█▇▆▇▇▇▆▆▆▆▇██▇█▇▇▆▆██▇▇│
-Now       │████████████████████████████████████████████████████████████████▓█████████████████████▓▓│
-New       │█▓▓▓▓▓▓▓▓░░████░░▓▓░█████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▓▓▓▓▓▓░███░░▓▓▓▓▓▓░░██▓│
+Now       │████████████████████████████████████████████████████████████████████████████████████████│
+New       │█████████╎█████╎███░██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░███████╎███╎███████░████│
           └──────┴──────┴───────┴──────┴───────┴──────┴───────┴──────┴───────┴───────┴──────┴──────┘
                  09:00  12:00   15:00  18:00   21:00  Sun     03:00  06:00   09:00   12:00  15:00
-           █▓ ride   ░ pause   ▁…█ speed up to 24 km/h
+           ██ ride   ░ pause   ╎ shorter pause   ▁…█ speed up to 24 km/h   · one column ≈ 23 min
 
 Now
  #  Type  Label      Start  Duration  Distance  km/h    W
@@ -63,8 +63,12 @@ New
 
 `Now` is what the activity has, `New` what it will get. The first interval used
 to run for 25 hours including the night; now the night is a pause of its own
-and every block gets honest averages. Every interval gets at least one column,
-so a ten-minute stop stays visible even on a two-day timeline.
+and every block gets honest averages.
+
+The timeline is drawn to scale. A pause shorter than one column still shows up,
+as a thin `╎`, so a ten-minute stop stays visible on a two-day timeline without
+looking like an hour. In the terminal, consecutive rides alternate between
+green and cyan.
 
 ## How pauses are found
 

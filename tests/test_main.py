@@ -92,6 +92,51 @@ def test_confirmation_no_writes_nothing(run, capsys, tmp_path):
     assert backups(tmp_path) == []
 
 
+@pytest.mark.parametrize("error", [KeyboardInterrupt, EOFError])
+def test_interrupt_at_the_prompt_writes_nothing(run, capsys, monkeypatch, tmp_path, error):
+    def interrupt(*a, **kw):
+        raise error
+
+    monkeypatch.setattr(cli.Confirm, "ask", interrupt)
+    api = FakeApi(ONE_BIG_INTERVAL)
+    with pytest.raises(SystemExit) as exit:
+        run(api, "i1", capsys=capsys, tty=True)
+    assert exit.value.code == 130
+    assert "Interrupted, nothing changed" in capsys.readouterr().out
+    assert api.puts == []
+    assert backups(tmp_path) == []
+
+
+def test_interrupt_while_fetching_writes_nothing(run, capsys, monkeypatch):
+    api = FakeApi(ONE_BIG_INTERVAL)
+
+    def interrupt(*a, **kw):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(api, "get", interrupt)
+    with pytest.raises(SystemExit) as exit:
+        run(api, "i1", "--yes", capsys=capsys)
+    assert exit.value.code == 130
+    assert "Interrupted, nothing changed" in capsys.readouterr().out
+
+
+def test_interrupt_while_writing_points_at_the_backup(run, capsys, monkeypatch, tmp_path):
+    api = FakeApi(ONE_BIG_INTERVAL)
+
+    def interrupt(*a, **kw):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(api, "put", interrupt)
+    with pytest.raises(SystemExit) as exit:
+        run(api, "i1", "--yes", capsys=capsys)
+    out = capsys.readouterr().out
+    assert exit.value.code == 130
+    assert "may or may not have changed" in out
+    assert "nothing changed" not in out
+    [backup] = backups(tmp_path)
+    assert str(backup) in out.replace("\n", "")
+
+
 def test_without_a_terminal_it_needs_yes(run, capsys):
     api = FakeApi(ONE_BIG_INTERVAL)
     out = run(api, "i1", capsys=capsys)

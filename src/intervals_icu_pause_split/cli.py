@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import bisect
 import json
-import math
 import os
 import re
 import sys
@@ -48,10 +47,12 @@ COOLDOWN_LABEL = "Cooldown"
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 SPARK = "▁▂▃▄▅▆▇█"
-# Alternated so that adjacent riding intervals stay distinguishable.
-RIDE_CHARS = ("█", "▓")
+# Rides are always solid; the colour alternates so adjacent rides stay apart.
+# A shaded block for every other ride reads as a pause in many fonts.
+RIDE_CHAR = "█"
 RIDE_STYLES = ("green", "cyan")
 PAUSE_CHAR = "░"
+SHORT_PAUSE_CHAR = "╎"  # a pause shorter than one column
 PAUSE_STYLE = "yellow"
 
 console = Console(highlight=False)
@@ -374,25 +375,30 @@ def render_timeline(s: Streams, rows: list[tuple[str, list[Segment]]], start_dt:
 
     for name, segments in rows:
         band: list[tuple[str, str | None]] = [(" ", None)] * cols
-        # Rides cover the columns whose midpoint they contain. One too short for
-        # that (a 10 min warmup on a two-day trip) gets a single column, painted
-        # last so its neighbour can't swallow it ...
-        tiny: list[tuple[int, int]] = []
-        for ordinal, seg in enumerate(x for x in segments if not x.is_pause):
+        looks: list[tuple[Segment, str, str]] = []
+        rides = 0
+        for seg in segments:
+            if seg.is_pause:
+                looks.append((seg, PAUSE_CHAR, PAUSE_STYLE))
+            else:
+                looks.append((seg, RIDE_CHAR, RIDE_STYLES[rides % 2]))
+                rides += 1
+
+        # Every interval covers the columns whose midpoint it contains, which
+        # keeps the widths proportional to the time ...
+        tiny: list[tuple[Segment, str, str, int]] = []
+        for seg, char, style in looks:
             lo, hi = col(s.t(seg.start)), col(s.t(seg.end))
             covered = [c for c in range(cols) if lo <= c + 0.5 < hi]
             if not covered:
-                tiny.append((ordinal, min(cols - 1, int(lo))))
+                tiny.append((seg, char, style, min(cols - 1, int(lo))))
             for c in covered:
-                band[c] = (RIDE_CHARS[ordinal % 2], RIDE_STYLES[ordinal % 2])
-        for ordinal, c in tiny:
-            band[c] = (RIDE_CHARS[ordinal % 2], RIDE_STYLES[ordinal % 2])
-        # ... and pauses are painted on top with at least one column, so short ones stay visible.
-        for seg in (x for x in segments if x.is_pause):
-            lo = min(cols - 1, int(col(s.t(seg.start))))
-            hi = max(lo + 1, math.ceil(col(s.t(seg.end))))
-            for c in range(lo, min(hi, cols)):
-                band[c] = (PAUSE_CHAR, PAUSE_STYLE)
+                band[c] = (char, style)
+        # ... and one too short for that still shows up: a ride (a 5 km warmup on a
+        # two-day trip) as a block, a pause as a thin mark. Painted last, pauses on
+        # top, so the neighbour can't swallow them.
+        for seg, char, style, c in sorted(tiny, key=lambda x: x[0].is_pause):
+            band[c] = (SHORT_PAUSE_CHAR if seg.is_pause else char, style)
         body = Text()
         for char, style in band:
             body.append(char, style=style)
@@ -420,9 +426,11 @@ def render_timeline(s: Streams, rows: list[tuple[str, list[Segment]]], start_dt:
     lines.append(Text(" " * (label_w + 2) + "".join(labels).rstrip()))
 
     legend = Text(" " * (label_w + 2))
-    legend.append(RIDE_CHARS[0], RIDE_STYLES[0]).append(RIDE_CHARS[1], RIDE_STYLES[1]).append(" ride   ")
+    legend.append(RIDE_CHAR, RIDE_STYLES[0]).append(RIDE_CHAR, RIDE_STYLES[1]).append(" ride   ")
     legend.append(PAUSE_CHAR, PAUSE_STYLE).append(" pause   ")
+    legend.append(SHORT_PAUSE_CHAR, PAUSE_STYLE).append(" shorter pause   ")
     legend.append(f"{SPARK[0]}…{SPARK[-1]}", "blue").append(f" speed up to {vmax * 3.6:.0f} km/h")
+    legend.append(f"   · one column ≈ {fmt_duration(total / cols)}", "dim")
     lines.append(legend)
     return lines
 
@@ -537,6 +545,15 @@ def resolve_api_key(args: argparse.Namespace) -> str:
 
 
 def main() -> None:
+    try:
+        run()
+    except (KeyboardInterrupt, EOFError):
+        # Ctrl-C anywhere before the write, or Ctrl-D at the prompt: nothing was sent.
+        console.print("\n  Interrupted, nothing changed.\n")
+        raise SystemExit(130) from None
+
+
+def run() -> None:
     parser = build_parser()
     args = parser.parse_args()
     if args.edges and len(args.edges) > 2:
@@ -608,10 +625,19 @@ def main() -> None:
             return
 
     backup = save_backup(activity_id, current)
-    result = api.put(f"/activity/{activity_id}/intervals", payload(new_segments), all="true") or {}
+    undo = f"{PROG} {activity_id} --restore {escape(str(backup))}"
+    try:
+        result = api.put(f"/activity/{activity_id}/intervals", payload(new_segments), all="true") or {}
+    except KeyboardInterrupt:
+        # The request may already have reached intervals.icu, so don't claim nothing changed.
+        console.print(
+            "\n  [yellow]Interrupted while writing; the intervals may or may not have changed.[/]\n"
+            f"  [dim]Check the activity, or undo with: {undo}[/]\n"
+        )
+        raise SystemExit(130) from None
     written = len(result.get("icu_intervals") or [])
     console.print(f"\n  [green]✓[/] {written} intervals set → https://intervals.icu/activities/{activity_id}")
-    console.print(f"  [dim]Undo with: {PROG} {activity_id} --restore {escape(str(backup))}[/]\n")
+    console.print(f"  [dim]Undo with: {undo}[/]\n")
 
 
 if __name__ == "__main__":

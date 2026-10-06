@@ -30,35 +30,72 @@ def test_fmt_clock():
     assert cli.fmt_clock(SATURDAY_MORNING, with_day=True) == "Sat 06:30"
 
 
-def test_short_pause_stays_visible_on_a_long_timeline():
+def band(s, segments, width=60) -> tuple[str, list[str | None]]:
+    """The characters and per-column styles inside the frame of the first band."""
+    line = cli.render_timeline(s, [("New", segments)], SATURDAY_MORNING, width)[1]
+    styles: list[str | None] = [None] * len(line.plain)
+    for span in line.spans:
+        for i in range(span.start, span.end):
+            styles[i] = str(span.style)
+    start, end = line.plain.index("│") + 1, line.plain.rindex("│")
+    return line.plain[start:end], styles[start:end]
+
+
+def test_short_pause_is_a_thin_mark_not_a_block():
     s = make_streams(("ride", 6 * 3600), ("stop", 360), ("ride", 6 * 3600))
     segments = cli.build_segments(s, cli.find_pauses(s, STOP_SPEED, 300, 60), "Ride")
-    lines = [x.plain for x in cli.render_timeline(s, [("New", segments)], SATURDAY_MORNING, 60)]
-    band = next(x for x in lines if x.startswith("New"))
-    # 6 minutes of 12 hours is well under one column, but it still gets one
-    # (two when it straddles a column boundary).
-    assert 1 <= band.count(cli.PAUSE_CHAR) <= 2
+    chars, _ = band(s, segments)
+    # 6 minutes of 12 hours is well under one column: visible, but not inflated to a full one.
+    assert chars.count(cli.SHORT_PAUSE_CHAR) == 1
+    assert cli.PAUSE_CHAR not in chars
 
 
-def test_adjacent_rides_are_told_apart():
+def test_pause_widths_stay_proportional():
+    # One hour of pause in 21 hours on 48 columns is 2.3 columns, so two.
+    s = make_streams(("ride", 10 * 3600), ("stop", 3600), ("ride", 10 * 3600))
+    segments = cli.build_segments(s, cli.find_pauses(s, STOP_SPEED, 300, 60), "Ride")
+    chars, _ = band(s, segments)
+    assert len(chars) == 48
+    assert chars.count(cli.PAUSE_CHAR) == 2
+
+
+def test_rides_are_solid_and_alternate_colour():
     s = make_streams(("ride", 7200))
-    segments = [Segment("WORK", 0, 3600), Segment("WORK", 3600, 7200)]
-    band = cli.render_timeline(s, [("Now", segments)], SATURDAY_MORNING, 60)[1].plain
-    assert cli.RIDE_CHARS[0] in band and cli.RIDE_CHARS[1] in band
+    chars, styles = band(s, [Segment("WORK", 0, 3600), Segment("WORK", 3600, 7200)])
+    assert set(chars) == {cli.RIDE_CHAR}
+    assert set(styles) == set(cli.RIDE_STYLES)
 
 
 def test_tiny_ride_still_gets_a_column():
     s = make_streams(("ride", 7200))
     segments = [Segment("WORK", 0, 3590), Segment("WORK", 3590, 3600), Segment("WORK", 3600, 7200)]
-    band = cli.render_timeline(s, [("Now", segments)], SATURDAY_MORNING, 60)[1].plain
-    assert cli.RIDE_CHARS[1] in band
+    _, styles = band(s, segments)
+    # Three rides alternate green, cyan, green: the cyan one only exists if the tiny ride got a column.
+    assert styles.count(cli.RIDE_STYLES[1]) == 1
 
 
 def test_tiny_warmup_is_not_swallowed_by_the_ride_after_it():
     s = make_streams(("ride", 7200))
-    segments = [Segment("WORK", 0, 60, "Warmup"), Segment("WORK", 60, 7200)]
-    band = cli.render_timeline(s, [("New", segments)], SATURDAY_MORNING, 60)[1].plain
-    assert band.split("│")[1].startswith(cli.RIDE_CHARS[0] + cli.RIDE_CHARS[1])
+    _, styles = band(s, [Segment("WORK", 0, 60, "Warmup"), Segment("WORK", 60, 7200)])
+    assert styles[:2] == [cli.RIDE_STYLES[0], cli.RIDE_STYLES[1]]
+
+
+def test_short_pause_wins_over_a_tiny_ride_in_the_same_column():
+    s = make_streams(("ride", 7200))
+    segments = [
+        Segment("WORK", 0, 3590),
+        Segment("RECOVERY", 3590, 3595),
+        Segment("WORK", 3595, 3600),
+        Segment("WORK", 3600, 7200),
+    ]
+    chars, _ = band(s, segments)
+    assert chars.count(cli.SHORT_PAUSE_CHAR) == 1
+
+
+def test_legend_states_the_column_width():
+    s = make_streams(("ride", 4 * 3600))
+    legend = cli.render_timeline(s, [], SATURDAY_MORNING, 60)[-1].plain
+    assert "one column ≈ 5 min" in legend
 
 
 def test_axis_marks_midnight_with_the_weekday():
