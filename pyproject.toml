@@ -1,6 +1,6 @@
 [project]
 name = "intervals-icu-pause-split"
-version = "0.1.0"
+version = "0.2.0"
 description = "Split intervals.icu activities into moving and pause intervals, with a preview before anything is written"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -53,4 +53,5 @@ fail_under = 90
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]

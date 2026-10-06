@@ -148,6 +148,45 @@ INTERVALS_ICU_API_KEY=your_key_here
 | `--dry-run` | | Show the preview, never write |
 | `--yes` | | Skip the confirmation prompt |
 
+## Use it as a library
+
+Everything the command line does is available from Python, for example for a
+web service that lets people pick an activity, shows the preview and writes it
+when they confirm:
+
+```python
+from intervals_icu_pause_split import Client, Options, apply, plan, plan_restore
+
+with Client(access_token=token) as client:  # or Client(api_key)
+    p = plan(client, "https://intervals.icu/activities/i87942121", Options.parse(edges="5km"))
+    preview = p.to_dict()  # JSON-ready, to draw your own preview
+    if p.has_changes:
+        result = apply(client, p)
+        save_somewhere(result.previous)  # the intervals before the write
+
+    # Later, to undo:
+    apply(client, plan_restore(client, "i87942121", load_from_somewhere()))
+```
+
+- `plan()` only reads. It takes an activity id or URL and returns the current
+  and the proposed intervals; `apply()` writes the proposal.
+- `Options.parse()` takes the same strings as the command line (`"5m"`,
+  `"3km,10m"`) and raises `ValueError` with a readable message, handy for form
+  input. `Options(...)` takes seconds and km/h directly.
+- `to_dict()` has the activity, both interval lists with start time, duration,
+  distance, average speed and power per interval, a summary, and the speed over
+  time in equal slices for drawing a chart.
+- Errors are exceptions, never an exit or console output: `AuthError` (401/403),
+  `NotFoundError` (404), `IntervalsError` (any other HTTP error, or the network),
+  and `DataError` (the activity can't be split as asked). All of them derive
+  from `PauseSplitError`.
+- `Client` takes an API key, or an OAuth access token for a service acting on
+  behalf of other athletes. It is synchronous; in FastAPI, declare the
+  endpoints with `def` rather than `async def` so they run in the threadpool.
+
+The lower-level pieces (`find_pauses`, `build_segments`, `Streams`, `Segment`)
+are plain functions and dataclasses that work on lists, without any network.
+
 ## Development
 
 ```

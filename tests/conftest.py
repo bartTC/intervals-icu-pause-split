@@ -2,7 +2,7 @@ import httpx
 import pytest
 from rich.console import Console
 
-from intervals_icu_pause_split import cli
+from intervals_icu_pause_split import Client, cli
 
 
 @pytest.fixture(autouse=True)
@@ -21,10 +21,10 @@ def isolate(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def make_api():
-    """Build an Api whose requests are answered by `handler` instead of the network."""
+def make_client():
+    """Build a Client whose requests are answered by `handler` instead of the network."""
 
-    def factory(handler, key="testkey"):
-        return cli.Api(key, transport=httpx.MockTransport(handler))
+    def factory(handler, api_key="testkey", **kw):
+        return Client(api_key, transport=httpx.MockTransport(handler), **kw)
 
     return factory

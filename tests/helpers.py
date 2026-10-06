@@ -1,6 +1,11 @@
-"""Builders for 1 Hz streams made of rides, standstills and auto-pause gaps."""
+"""Builders for 1 Hz streams, and a fake intervals.icu behind httpx's MockTransport."""
 
-from intervals_icu_pause_split.cli import Streams
+import json
+
+import httpx
+
+from intervals_icu_pause_split import Client
+from intervals_icu_pause_split.detect import Streams
 
 RIDE_SPEED = 8.0  # m/s, 28.8 km/h
 RIDE_WATTS = 150
@@ -37,3 +42,48 @@ def as_json(s: Streams) -> list[dict]:
         {"type": "distance", "data": s.distance},
         {"type": "watts", "data": s.watts},
     ]
+
+
+class FakeIntervals:
+    """Answers the calls the package makes for one activity and records every write.
+
+    Set `interrupt` to "GET" or "PUT" to raise KeyboardInterrupt on that call,
+    as if Ctrl-C hit while the request was in flight.
+    """
+
+    def __init__(self, streams, intervals=None, activity_id="i1", sport="GravelRide"):
+        self.activity_id = activity_id
+        self.streams = streams
+        self.intervals = {"id": activity_id, "icu_intervals": intervals or []}
+        self.sport = sport
+        self.puts: list[tuple[str, list, dict]] = []
+        self.interrupt: str | None = None
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if request.method == self.interrupt:
+            raise KeyboardInterrupt
+        path = request.url.path.removeprefix("/api/v1")
+        base = f"/activity/{self.activity_id}"
+        if request.method == "PUT" and path == f"{base}/intervals":
+            body = json.loads(request.content)
+            self.puts.append((path, body, dict(request.url.params)))
+            return httpx.Response(200, json={"id": self.activity_id, "icu_intervals": body})
+        if path == f"{base}/streams.json":
+            return httpx.Response(200, json=as_json(self.streams))
+        if path == f"{base}/intervals":
+            return httpx.Response(200, json=self.intervals)
+        if path == base:
+            return httpx.Response(
+                200,
+                json={
+                    "id": self.activity_id,
+                    "type": self.sport,
+                    "name": "Saturday [gravel]",
+                    "start_date_local": "2026-08-29T06:30:00",
+                    "distance": 9600,
+                },
+            )
+        return httpx.Response(404, text="no such thing")
+
+    def client(self, api_key="k", **kw) -> Client:
+        return Client(api_key, transport=httpx.MockTransport(self.handler), **kw)

@@ -1,13 +1,14 @@
 from helpers import make_streams
 
-from intervals_icu_pause_split import cli
-from intervals_icu_pause_split.cli import Edge, Segment, Streams
+from intervals_icu_pause_split import detect
+from intervals_icu_pause_split.detect import Segment, Streams
+from intervals_icu_pause_split.units import Edge
 
 STOP_SPEED = 3 / 3.6
 
 
 def pauses(s, min_pause=300, merge=60, stop_speed=STOP_SPEED):
-    return cli.find_pauses(s, stop_speed, min_pause, merge)
+    return detect.find_pauses(s, stop_speed, min_pause, merge)
 
 
 def test_auto_pause_gap_is_a_pause():
@@ -67,7 +68,7 @@ def test_missing_speed_samples_are_not_standstill():
 
 def test_pauses_at_the_start_and_the_end():
     s = make_streams(("stop", 400), ("ride", 600), ("stop", 400))
-    segments = cli.build_segments(s, pauses(s), "Leg")
+    segments = detect.build_segments(s, pauses(s), "Leg")
     assert [(x.type, x.start, x.end, x.label) for x in segments] == [
         ("RECOVERY", 0, 400, ""),
         ("WORK", 400, 1000, "Leg 1"),
@@ -77,7 +78,7 @@ def test_pauses_at_the_start_and_the_end():
 
 def test_segments_cover_the_activity_without_overlap():
     s = make_streams(("ride", 600), ("gap", 600), ("ride", 300), ("stop", 400), ("ride", 600))
-    segments = cli.build_segments(s, pauses(s), "Fahrt")
+    segments = detect.build_segments(s, pauses(s), "Fahrt")
     assert segments[0].start == 0
     assert segments[-1].end == len(s)
     assert all(a.end == b.start for a, b in zip(segments, segments[1:]))
@@ -86,7 +87,7 @@ def test_segments_cover_the_activity_without_overlap():
 
 def test_edges_split_off_warmup_and_cooldown():
     s = make_streams(("ride", 1800), ("stop", 400), ("ride", 1800))
-    segments = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(600), cooldown=Edge(300))
+    segments = detect.build_segments(s, pauses(s), "Leg", warmup=Edge(600), cooldown=Edge(300))
     assert [(x.type, x.start, x.end, x.label) for x in segments] == [
         ("WORK", 0, 600, "Warmup"),
         ("WORK", 600, 1800, "Leg 1"),
@@ -99,14 +100,14 @@ def test_edges_split_off_warmup_and_cooldown():
 def test_edges_count_elapsed_time_across_an_auto_pause_gap():
     # A short traffic-light gap inside the warmup still counts towards its 10 minutes.
     s = make_streams(("ride", 300), ("gap", 120), ("ride", 1800))
-    [warmup, ride] = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(600))
+    [warmup, ride] = detect.build_segments(s, pauses(s), "Leg", warmup=Edge(600))
     assert (warmup.label, warmup.start, warmup.end) == ("Warmup", 0, 480)
     assert (ride.label, ride.start) == ("Leg 1", 480)
 
 
 def test_edges_on_a_single_ride():
     s = make_streams(("ride", 3600))
-    segments = cli.build_segments(s, [], "Leg", warmup=Edge(600), cooldown=Edge(600))
+    segments = detect.build_segments(s, [], "Leg", warmup=Edge(600), cooldown=Edge(600))
     assert [(x.start, x.end, x.label) for x in segments] == [
         (0, 600, "Warmup"),
         (600, 3000, "Leg 1"),
@@ -116,25 +117,25 @@ def test_edges_on_a_single_ride():
 
 def test_ride_shorter_than_the_edge_becomes_the_edge_as_a_whole():
     s = make_streams(("ride", 300), ("stop", 400), ("ride", 1800), ("stop", 400), ("ride", 200))
-    segments = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(600), cooldown=Edge(600))
+    segments = detect.build_segments(s, pauses(s), "Leg", warmup=Edge(600), cooldown=Edge(600))
     assert [x.label for x in segments] == ["Warmup", "", "Leg 1", "", "Cooldown"]
 
 
 def test_one_short_ride_is_the_cooldown_and_gets_no_warmup():
     s = make_streams(("ride", 300))
-    segments = cli.build_segments(s, [], "Leg", warmup=Edge(600), cooldown=Edge(600))
+    segments = detect.build_segments(s, [], "Leg", warmup=Edge(600), cooldown=Edge(600))
     assert [(x.start, x.end, x.label) for x in segments] == [(0, 300, "Cooldown")]
 
 
 def test_edges_without_any_riding_change_nothing():
     s = make_streams(("stop", 600))
-    assert cli.split_edges(s, [Segment("RECOVERY", 0, 600)], Edge(300), Edge(300)) == [Segment("RECOVERY", 0, 600)]
+    assert detect.split_edges(s, [Segment("RECOVERY", 0, 600)], Edge(300), Edge(300)) == [Segment("RECOVERY", 0, 600)]
 
 
 def test_edges_by_distance():
     # 8 m/s, so one kilometre is 125 samples.
     s = make_streams(("ride", 3600))
-    segments = cli.build_segments(s, [], "Leg", warmup=Edge(1000, by_distance=True), cooldown=Edge(1000, by_distance=True))
+    segments = detect.build_segments(s, [], "Leg", warmup=Edge(1000, by_distance=True), cooldown=Edge(1000, by_distance=True))
     assert [(x.start, x.end, x.label) for x in segments] == [
         (0, 125, "Warmup"),
         (125, 3474, "Leg 1"),
@@ -144,14 +145,14 @@ def test_edges_by_distance():
 
 def test_edges_mix_distance_and_time():
     s = make_streams(("ride", 3600))
-    segments = cli.build_segments(s, [], "Leg", warmup=Edge(1000, by_distance=True), cooldown=Edge(600))
+    segments = detect.build_segments(s, [], "Leg", warmup=Edge(1000, by_distance=True), cooldown=Edge(600))
     assert [(x.start, x.end) for x in segments] == [(0, 125), (125, 3000), (3000, 3600)]
 
 
 def test_distance_edge_ignores_time_spent_standing():
     # A traffic-light stop inside the first kilometre adds time but no distance.
     s = make_streams(("ride", 60), ("stop", 120), ("ride", 1800))
-    [warmup, _] = cli.build_segments(s, pauses(s), "Leg", warmup=Edge(1000, by_distance=True))
+    [warmup, _] = detect.build_segments(s, pauses(s), "Leg", warmup=Edge(1000, by_distance=True))
     assert (warmup.start, warmup.end) == (0, 245)
 
 
@@ -163,19 +164,19 @@ def test_edge_describes_itself():
 
 def test_no_pauses_means_one_ride():
     s = make_streams(("ride", 600))
-    assert [(x.type, x.start, x.end) for x in cli.build_segments(s, [], "Leg")] == [("WORK", 0, 600)]
+    assert [(x.type, x.start, x.end) for x in detect.build_segments(s, [], "Leg")] == [("WORK", 0, 600)]
 
 
 def test_payload_sends_only_the_rides():
     segments = [Segment("WORK", 0, 10, "Leg 1"), Segment("RECOVERY", 10, 20), Segment("WORK", 20, 30)]
-    assert cli.payload(segments) == [
+    assert detect.payload(segments) == [
         {"start_index": 0, "end_index": 10, "type": "WORK", "label": "Leg 1"},
         {"start_index": 20, "end_index": 30, "type": "WORK", "label": None},
     ]
 
 
 def test_segments_from_intervals_fills_in_missing_type_and_label():
-    segments = cli.segments_from_intervals(
+    segments = detect.segments_from_intervals(
         [
             {"start_index": 0, "end_index": 5, "type": None, "label": None},
             {"start_index": 5, "end_index": 9, "type": "RECOVERY"},
