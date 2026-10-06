@@ -27,6 +27,7 @@ intervals-icu-pause-split = "intervals_icu_pause_split.cli:main"
 [project.urls]
 Homepage = "https://github.com/bartTC/intervals-icu-pause-split"
 Issues = "https://github.com/bartTC/intervals-icu-pause-split/issues"
+Changelog = "https://github.com/bartTC/intervals-icu-pause-split/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
